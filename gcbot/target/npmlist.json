@@ -1,1 +1,0 @@
-{"version":"1.0.0","name":"gcbot","dependencies":{"@discordjs/rest":{"version":"1.0.1"},"cheerio":{"version":"1.0.0-rc.12"},"discord.js":{"version":"14.2.0"},"jquery":{"version":"3.6.0"},"node-fetch":{"version":"3.2.10"},"request":{"version":"2.88.2"},"save":{"version":"2.5.0"}}}
