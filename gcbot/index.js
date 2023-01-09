@@ -5,7 +5,10 @@ const token = process.env['token'];
 const clientId = process.env['client_id'];
 const applicaitonId = process.env['application_id'];
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds,
+                            		GatewayIntentBits.GuildMessages,
+                            		GatewayIntentBits.MessageContent,
+                            		GatewayIntentBits.GuildMembers,] });
 const db = new Database();
 const rest = new REST({ version: '10' }).setToken(token);
 let guild = null;
@@ -20,15 +23,17 @@ moment.tz.setDefault("Asia/Seoul");
 (async () => {
     try {
         console.log('Started refreshing application (/) commands.');
-        await rest.put(Routes.applicationCommands(clientId, applicaitonId), { body: commands });
+        await rest.put(Routes.applicationCommands(clientId), { body: commands });
         console.log('Successfully reloaded application (/) commands.');
 
-        // await db.list().then(keys => {
-        //    keys.forEach(key => {
-        //       db.delete(key);
-        //    });
+        // await db.list().then(async keys => {
+        //     for (let key of keys) {
+        //         await db.delete(key);
+        //     }
         // });
-        
+
+        // await db.empty();
+
         // await db.list().then(keys => {
         //     console.log(keys);
         // })
@@ -43,13 +48,21 @@ client.on('ready', () => {
 
 client.on(Events.InteractionCreate, async interaction => {
 
-    console.log()
-
     if (!interaction.isChatInputCommand()) {
         return;
     }
 
     if (interaction.commandName === '뽑기') {
+
+        await db.list('temp').then(async matches => {
+            console.log('matches', matches);
+            for (let key of matches) {
+                await db.delete(key).then(res => {
+                    console.log('삭제완료');
+                });
+            }
+        });
+
         const embed = new EmbedBuilder()
             .setColor('Red')
             .setTitle('맵 리스트')
@@ -85,80 +98,80 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (interaction.commandName === '조회') {
 
+        let keyList = null;
         let result = [];
-        let count = 0;
-        
+
         await db.list().then((res) => {
-            res.reverse().forEach((item) => {
-                db.get(item).then((data) => {
-                    if (data.isComplete === true && data.date !== undefined) {
-                        console.log(data);
-                        
-                        if (count === 10) {
-                            return;
-                        }
-
-                        let lPoint = 0;
-                        let rPoint = 0;
-
-                        if (player1.id === firstGameWinner) {
-                            lPoint++;
-                        } else {
-                            rPoint++;
-                        }
-
-                        if (player1.id === secondGameWinner) {
-                            lPoint++;
-                        } else {
-                            rPoint++;
-                        }
-
-                        if (thirdGameWinner !== undefined) {
-                            if (player1.id === thirdGameWinner) {
-                                lPoint++;
-                            } else {
-                                rPoint++;
-                            }
-                        }
-
-                        let description = null;
-                        
-                        if (lPoint >= 2) {
-                            description = `${data.player1.username} vs ${data.player2.username}, ${lPoint} : ${rPoint}, 승(${data.player1.username})`
-                        } else {
-                            description = `${data.player1.username} vs ${data.player2.username}, ${lPoint} : ${rPoint}, 승(${data.player2.username})`
-                        }
-
-                        const content = {
-                            'name': data.date,
-                            'value': `${data.player1.username} vs ${data.player2.username},` 
-                        }
-
-                        result.push(data);
-                        count++;
-                    }
-                });
-            });
+            keyList = res;
+            console.log(keyList);
         });
 
-        console.log(result);
+        for (let key of keyList) {
+            await db.get(key).then((data) => {
+                console.log(data);
+                if (data.isComplete === true && data.date !== undefined) {
 
-        // const exampleEmbed = new EmbedBuilder()
-        //     .setColor('Red')
-        //     .setTitle('매치 결과조회')
-        //     .setDescription('최근 10개의 매치결과입니다.')
-        //     .addFields(
-        //         { name: '매치업', value: `${player1} vs ${player2}` },
-        //         { name: '1세트: ' + users.maps[0].label, value: firstWinner },
-        //         { name: '2세트: ' + users.maps[1].label, value: secondWinner },
-        //         { name: '3세트: ' + users.maps[2].label, value: '경기없음' },
-        //         { name: '승자', value: matchResult },
-        //     )
-        //     .setTimestamp();
+                    let lPoint = 0;
+                    let rPoint = 0;
 
-        // interaction.reply({ embeds: [exampleEmbed] });
+                    const player1 = data.player1;
+                    const player2 = data.player2;
+
+                    if (player1.id === data.firstGameWinner) {
+                        lPoint++;
+                    } else {
+                        rPoint++;
+                    }
+
+                    if (player1.id === data.secondGameWinner) {
+                        lPoint++;
+                    } else {
+                        rPoint++;
+                    }
+
+                    if (data.thirdGameWinner !== undefined) {
+                        if (player1.id === data.thirdGameWinner) {
+                            lPoint++;
+                        } else {
+                            rPoint++;
+                        }
+                    }
+
+                    let description = null;
+                    let name = null;
+
+                    if (lPoint >= 2) {
+                        name = `${data.date}, 승리: ${data.player1.username})`;
+                        description = `대진: ${data.player1.username} vs ${data.player2.username}, 스코어: [${lPoint} : ${rPoint}]`;
+                    } else {
+                        name = `${data.date}, 승리: ${data.player2.username})`;
+                        description = `대진: ${data.player1.username} vs ${data.player2.username}, 스코어: [${lPoint} : ${rPoint}]`;
+                    }
+
+                    const content = {
+                        'name': name,
+                        'value': description
+                    }
+
+                    result.push(content);
+                }
+            });
+        }
+
+        let matchList = new EmbedBuilder()
+            .setColor('Red')
+            .setTitle('매치 결과조회')
+            .setDescription('최근 10개의 매치결과입니다.')
+            .setTimestamp();
+
+        result.forEach(item => {
+            matchList.addFields(item);
+        });
+
+        interaction.reply({ embeds: [matchList] });
     }
 });
+
 
 // 버튼 상호작용
 client.on(Events.InteractionCreate, async interaction => {
@@ -169,7 +182,6 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (interaction.customId === 'noban') {
         let users = await client.users.cache;
-
         let userPickMap = maps.slice();
         let result = [];
 
@@ -190,7 +202,7 @@ client.on(Events.InteractionCreate, async interaction => {
             )
             .setDescription('Good Luck 🍀');
 
-        const key = v4().replaceAll('-', '');
+        const key = 'temp_' + v4().replaceAll('-', '');
         await db.set(key, { 'maps': result });
 
         const row = new ActionRowBuilder()
@@ -207,18 +219,20 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (interaction.customId.split('||')[0] === 'insertResultStart') {
 
-        let users = await client.users.cache;
+        const guildId = interaction.guildId;
+        const guild = await client.guilds.fetch(guildId);
+        const users = await guild.members.fetch();
+
         let options = [];
 
         // 현재 유저목록 불러오기
         users.forEach(item => {
             let object = {};
-
-            if (item.bot === false) {
-                object.label = item.username;
-                object.value = item.id;
-                options.push(object);
-            }
+            // if (item.bot === false) {
+            object.label = item.user.username;
+            object.value = item.user.id;
+            options.push(object);
+            // }
         });
 
         const row = new ActionRowBuilder()
@@ -236,9 +250,6 @@ client.on(Events.InteractionCreate, async interaction => {
 // select 상호작용
 client.on(Events.InteractionCreate, async interaction => {
 
-    const guildId = interaction.guildId;
-    let guild = client.guilds.cache.get(guildId);
-
     if (!interaction.isStringSelectMenu()) {
         return;
     }
@@ -247,21 +258,27 @@ client.on(Events.InteractionCreate, async interaction => {
 
         const key = interaction.customId.split('||')[1];
 
+        const guildId = interaction.guildId;
+        const guild = await client.guilds.fetch(guildId);
+        const users = await guild.members.fetch();
+
+        const user = users.get(interaction.values[0]).user;
+        console.log(user);
+        console.log(key);
         await db.get(key).then((res) => {
-            res.player1 = guild.members.cache.get(interaction.values[0]).user;
+            console.log('sp1 res', res);
+            res.player1 = user;
             db.set(key, res);
         });
-
-        let users = await client.users.cache;
+        
         let options = [];
 
         users.forEach(item => {
             let object = {};
-
             //if (item.bot === false) {
-                object.label = item.username;
-                object.value = item.id;
-                options.push(object);
+            object.label = item.user.username;
+            object.value = item.user.id;
+            options.push(object);
             // }
         });
 
@@ -278,19 +295,25 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (interaction.customId.split('||')[0] === 'selectPlayer2') {
 
-        let users = null;
         const key = interaction.customId.split('||')[1];
 
+        const guildId = interaction.guildId;
+        const guild = await client.guilds.fetch(guildId);
+        const users = await guild.members.fetch();
+        
+        const user = users.get(interaction.values[0]).user;
+        let selectUsers = null;
+
         await db.get(key).then((res) => {
-            res.player2 = guild.members.cache.get(interaction.values[0]).user;
-            users = res;
+            res.player2 = user;
+            selectUsers = res;
             db.set(key, res);
         });
 
         let options = [];
-        
-        options.push(selectMemberData(users.player1));
-        options.push(selectMemberData(users.player2));
+
+        options.push(selectMemberData(selectUsers.player1));
+        options.push(selectMemberData(selectUsers.player2));
 
         const row = new ActionRowBuilder()
             .addComponents(
@@ -305,19 +328,19 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (interaction.customId.split('||')[0] === 'firstGameWinner') {
 
-        let users = null;
+        let selectUsers = null;
         const key = interaction.customId.split('||')[1];
 
         await db.get(key).then((res) => {
             res.firstGameWinner = interaction.values[0];
-            users = res;
+            selectUsers = res;
             db.set(key, res);
         });
 
         let options = [];
 
-        options.push(selectMemberData(users.player1));
-        options.push(selectMemberData(users.player2));
+        options.push(selectMemberData(selectUsers.player1));
+        options.push(selectMemberData(selectUsers.player2));
 
         const row = new ActionRowBuilder()
             .addComponents(
@@ -332,46 +355,60 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (interaction.customId.split('||')[0] === 'secondGameWinner') {
 
-        let users = null;
+        let selectUsers = null;
         const key = interaction.customId.split('||')[1];
 
-        await db.get(key).then((res) => {
+        await db.get(key).then(res => {
             res.secondGameWinner = interaction.values[0];
-            users = res;
+            selectUsers = res;
             db.set(key, res);
         });
 
-        if (users.firstGameWinner === users.secondGameWinner) {
+        if (selectUsers.firstGameWinner === selectUsers.secondGameWinner) {
 
-            const today = moment(new Date).format('YYYY/MM/DD HH:mm:ss');
+            const nowMoment = moment(new Date);
+            const today = nowMoment.format('YYYY/MM/DD HH:mm:ss');
+            const timestamp = nowMoment.format('YYYYMMDDHHmmss');
 
+            let matchResult = null;
+            let winnerId = null;
+            
             await db.get(key).then((res) => {
                 res.isComplete = true;
                 res.date = today;
-                users = res;
-                db.set(key, res);
+                selectUsers = res;
+
+                if (res.player1.id === res.firstGameWinner) {
+                    winnerId = res.player1.id;
+                    matchResult = `${res.player1.username} 🔥`;
+                } else {
+                    winnerId = res.player2.id;
+                    matchResult = `${res.player2.username} 🔥`;
+                }
+
+                let simplify = {
+                    'p1_id': res.player1.id,
+                    'p1_name': res.player1.username,
+                    'p2_id': res.player2.id,
+                    'p2_name': res.player2.username,
+                    'winner': winnerId
+                }
+
+                const realKey = `${timestamp}||${JSON.stringify(simplify)}`;
+                db.set(realKey, res);
             });
-            
-            const player1 = selectMemberData(users.player1).label;
-            const player2 = selectMemberData(users.player2).label;
-            const firstWinner = selectMemberData(await guild.members.cache.get(users.firstGameWinner).user).label;
-            const secondWinner = selectMemberData(await guild.members.cache.get(users.secondGameWinner).user).label;
 
-            let winnerCount = 0;
+            let winP = null;
 
-            if (player1 === firstWinner) {
-                winnerCount += 1;
-            }
-
-            if (player1 === secondWinner) {
-                winnerCount += 1;
-            }
-
-            if (winnerCount === 2) {
-                matchResult = `${player1} 🔥`;
+            if (selectUsers.player1.id === selectUsers.firstGameWinner) {
+                winP = selectUsers.player1;
             } else {
-                matchResult = `${player2} 🔥`;
+                winP = selectUsers.player2;
             }
+            
+            const player1 = selectMemberData(selectUsers.player1).label;
+            const player2 = selectMemberData(selectUsers.player2).label;
+            const winnerLabel = selectMemberData(winP).label;
 
             const exampleEmbed = new EmbedBuilder()
                 .setColor('Red')
@@ -379,26 +416,20 @@ client.on(Events.InteractionCreate, async interaction => {
                 .setDescription(today)
                 .addFields(
                     { name: '매치업', value: `${player1} vs ${player2}` },
-                    { name: '1세트: ' + users.maps[0].label, value: firstWinner },
-                    { name: '2세트: ' + users.maps[1].label, value: secondWinner },
-                    { name: '3세트: ' + users.maps[2].label, value: '경기없음' },
+                    { name: '1세트: ' + selectUsers.maps[0].label, value: winnerLabel },
+                    { name: '2세트: ' + selectUsers.maps[1].label, value: winnerLabel },
+                    { name: '3세트: ' + selectUsers.maps[2].label, value: '경기없음' },
                     { name: '승자', value: matchResult },
                 )
                 .setTimestamp();
-            
+
             interaction.reply({ embeds: [exampleEmbed] });
         } else {
 
-            await db.get(key).then((res) => {
-                res.secondGameWinner = interaction.values[0];
-                users = res;
-                db.set(key, res);
-            });
-
             let options = [];
 
-            options.push(selectMemberData(users.player1));
-            options.push(selectMemberData(users.player2));
+            options.push(selectMemberData(selectUsers.player1));
+            options.push(selectMemberData(selectUsers.player2));
 
             const row = new ActionRowBuilder()
                 .addComponents(
@@ -415,50 +446,68 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.customId.split('||')[0] === 'insertResultEnd') {
 
         const key = interaction.customId.split('||')[1];
-        const today = moment(new Date).format('YYYY/MM/DD HH:mm:ss');
-        let users = null;
+        const nowMoment = moment(new Date);
+        const today = nowMoment.format('YYYY/MM/DD HH:mm:ss');
+        const timestamp = nowMoment.format('YYYYMMDDHHmmss');
+
+        let selectUsers = null;
 
         await db.get(key).then((res) => {
             res.thirdGameWinner = interaction.values[0];
             res.isComplete = true;
             res.date = today;
-            users = res;
-            db.set(key, res);
+            selectUsers = res;
+
+            let winnerId = null;
+
+            if (res.player1.id === res.thirdGameWinner) {
+                winnerId = res.player1.id;
+            } else {
+                winnerId = res.player2.id;
+            }
+
+            let simplify = {
+                'p1_id': res.player1.id,
+                'p1_name': res.player1.username,
+                'p2_id': res.player2.id,
+                'p2_name': res.player2.username,
+                'winner': winnerId
+            }
+
+            const realKey = `${timestamp}||${JSON.stringify(simplify)}`;
+            db.set(realKey, res);
         });
 
-        const player1 = selectMemberData(users.player1).label;
-        const player2 = selectMemberData(users.player2).label;
-        const firstWinner = selectMemberData(await guild.members.cache.get(users.firstGameWinner).user).label;
-        const secondWinner = selectMemberData(await guild.members.cache.get(users.secondGameWinner).user).label;
+        const player1 = selectMemberData(selectUsers.player1).label;
+        const player2 = selectMemberData(selectUsers.player2).label;
 
-        let winnerCount = 0;
-
-        if (player1 === firstWinner) {
-            winnerCount += 1;
-        }
-
-        if (player1 === secondWinner) {
-            winnerCount += 1;
-        }
-
-        let thirdWinner = null;
-
-        if (users.thirdGameWinner !== undefined) {
-            thirdWinner = selectMemberData(await guild.members.cache.get(users.thirdGameWinner).user).label;
-            if (player1 === thirdWinner) {
-                winnerCount += 1;
-            }
+        let fWinP = null;
+        let sWinP = null;
+        let tWinP = null;
+        
+        if (selectUsers.player1.id === selectUsers.firstGameWinner) {
+            fWinP = selectUsers.player1;
         } else {
-            thirdWinner = '경기없음';
+            fWinP = selectUsers.player2;
         }
 
-        let matchResult = null;
+        if (selectUsers.player1.id === selectUsers.secondGameWinner) {
+            sWinP = selectUsers.player1;
+        } else {
+            sWinP = selectUsers.player2;
+        }
 
-        if (winnerCount >= 2) {
+        if (selectUsers.player1.id === selectUsers.thirdGameWinner) {
+            tWinP = selectUsers.player1;
             matchResult = `${player1} 🔥`;
         } else {
+            tWinP = selectUsers.player2;
             matchResult = `${player2} 🔥`;
         }
+        
+        const fWinner = selectMemberData(fWinP).label;
+        const sWinner = selectMemberData(sWinP).label;
+        const tWinner = selectMemberData(tWinP).label;
 
         const exampleEmbed = new EmbedBuilder()
             .setColor('Red')
@@ -466,9 +515,9 @@ client.on(Events.InteractionCreate, async interaction => {
             .setDescription(today)
             .addFields(
                 { name: '매치업', value: `${player1} vs ${player2}` },
-                { name: '1세트: ' + users.maps[0].label, value: firstWinner },
-                { name: '2세트: ' + users.maps[1].label, value: secondWinner },
-                { name: '3세트: ' + users.maps[2].label, value: thirdWinner },
+                { name: '1세트: ' + selectUsers.maps[0].label, value: fWinner },
+                { name: '2세트: ' + selectUsers.maps[1].label, value: sWinner },
+                { name: '3세트: ' + selectUsers.maps[2].label, value: tWinner },
                 { name: '승자', value: matchResult },
             )
             .setTimestamp();
@@ -480,8 +529,6 @@ client.on(Events.InteractionCreate, async interaction => {
 client.login(token);
 
 function selectMemberData(member) {
-
-    console.log('member', member);
 
     let object = {
         'label': member.username,
